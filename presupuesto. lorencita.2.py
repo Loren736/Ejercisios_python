@@ -3,289 +3,178 @@ from tkinter import messagebox, ttk
 import sqlite3
 from datetime import datetime
 
-# --- CONFIGURACIÓN DE LA BASE DE DATOS ---
+# --- CONFIGURACIÓN ESTÉTICA (COLORES Y FUENTES) ---
+COLOR_FONDO = "#F3F4F6"
+COLOR_TARJETA = "#FFFFFF"
+COLOR_PRIMARIO = "#4F46E5"  # Índigo
+COLOR_EXITO = "#10B981"    # Esmeralda
+COLOR_PELIGRO = "#EF4444"   # Rojo
+COLOR_TEXTO = "#111827"
+COLOR_TEXTO_GRIS = "#6B7280"
+
+# --- LÓGICA DE BASE DE DATOS ---
 def iniciar_db():
-    conexion = sqlite3.connect("presupuesto.db")
-    cursor = conexion.cursor()
-    cursor.execute('''CREATE TABLE IF NOT EXISTS movimientos (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        tipo TEXT,
-                        monto REAL,
-                        fecha TEXT)''')
-    conexion.commit()
-    conexion.close()
+    with sqlite3.connect("presupuesto.db") as conexion:
+        conexion.execute('''CREATE TABLE IF NOT EXISTS movimientos (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            tipo TEXT, monto REAL, fecha TEXT)''')
 
 def registrar_en_db(tipo, monto):
-    conexion = sqlite3.connect("presupuesto.db")
-    cursor = conexion.cursor()
     ahora = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
-    cursor.execute("INSERT INTO movimientos (tipo, monto, fecha) VALUES (?, ?, ?)", (tipo, monto, ahora))
-    conexion.commit()
-    conexion.close()
+    with sqlite3.connect("presupuesto.db") as conexion:
+        conexion.execute("INSERT INTO movimientos (tipo, monto, fecha) VALUES (?, ?, ?)", (tipo, monto, ahora))
 
 def obtener_saldo():
-    conexion = sqlite3.connect("presupuesto.db")
-    cursor = conexion.cursor()
-    cursor.execute("SELECT tipo, monto FROM movimientos")
-    movimientos = cursor.fetchall()
-    conexion.close()
-    
-    saldo = 0.0
-    for tipo, monto in movimientos:
-        if tipo == "Ingreso":
-            saldo += monto
-        else:
-            saldo -= monto
-    return saldo
+    with sqlite3.connect("presupuesto.db") as conexion:
+        cursor = conexion.cursor()
+        cursor.execute("SELECT tipo, monto FROM movimientos")
+        movimientos = cursor.fetchall()
+        return sum(m if t == "Ingreso" else -m for t, m in movimientos)
 
-def borrar_historial_db():
-    conexion = sqlite3.connect("presupuesto.db")
-    cursor = conexion.cursor()
-    cursor.execute("DELETE FROM movimientos") # Borra todos los datos
-    conexion.commit()
-    conexion.close()
+def eliminar_registro_db(id_registro):
+    with sqlite3.connect("presupuesto.db") as conexion:
+        conexion.execute("DELETE FROM movimientos WHERE id = ?", (id_registro,))
 
-# --- INTERFAZ GRÁFICA ---
+# --- INTERFAZ GRÁFICA PROFESIONAL ---
 class AppPresupuesto:
     def __init__(self, root):
         self.root = root
-        self.root.title("Gestor de Presupuesto Pro")
-        self.root.geometry("400x600") # Un poco más alto para el nuevo botón
+        self.root.title("MyWallet - Pro")
+        self.root.geometry("450x600")
+        self.root.configure(bg=COLOR_FONDO)
 
-        self.saldo_var = tk.StringVar(value=f"Saldo: ${obtener_saldo():.2f}")
+        # Contenedor principal con margen
+        self.main_frame = tk.Frame(root, bg=COLOR_FONDO, padx=30, pady=30)
+        self.main_frame.pack(expand=True, fill="both")
 
-        # UI - Diseño Principal
-        tk.Label(root, text="MI BILLETERA", font=("Arial", 14, "bold"), fg="gray").pack(pady=10)
-        self.label_saldo = tk.Label(root, textvariable=self.saldo_var, font=("Arial", 22, "bold"), pady=10)
-        self.label_saldo.pack()
+        # Encabezado
+        tk.Label(self.main_frame, text="MI BALANCE", font=("Helvetica", 10, "bold"), 
+                 bg=COLOR_FONDO, fg=COLOR_TEXTO_GRIS).pack(anchor="w")
 
-        tk.Label(root, text="Monto a operar:", font=("Arial", 10)).pack(pady=5)
-        self.entry_monto = tk.Entry(root, font=("Arial", 14), justify='center')
-        self.entry_monto.pack(pady=5)
+        # Tarjeta de Saldo Principal
+        self.card = tk.Frame(self.main_frame, bg=COLOR_TARJETA, padx=20, pady=25, 
+                             highlightthickness=1, highlightbackground="#E5E7EB")
+        self.card.pack(fill="x", pady=(5, 25))
 
-        # Botones Principales
-        tk.Button(root, text="➕ Ingresar Dinero", bg="#28a745", fg="white", font=("Arial", 10, "bold"), 
-                  width=25, height=2, command=self.ingresar).pack(pady=10)
+        self.saldo_var = tk.StringVar(value=f"${obtener_saldo():,.2f}")
+        self.lbl_saldo = tk.Label(self.card, textvariable=self.saldo_var, font=("Helvetica", 32, "bold"), 
+                                  bg=COLOR_TARJETA, fg=COLOR_TEXTO)
+        self.lbl_saldo.pack()
+
+        # Entrada de Monto
+        tk.Label(self.main_frame, text="Monto de operación", font=("Helvetica", 9), 
+                 bg=COLOR_FONDO, fg=COLOR_TEXTO_GRIS).pack(anchor="w")
         
-        tk.Button(root, text="➖ Registrar Gasto", bg="#dc3545", fg="white", font=("Arial", 10, "bold"), 
-                  width=25, height=2, command=self.gastar).pack(pady=10)
-        
-        tk.Button(root, text="📜 Ver Historial", bg="#007bff", fg="white", font=("Arial", 10, "bold"), 
-                  width=25, height=2, command=self.mostrar_historial).pack(pady=10)
+        self.entry_monto = tk.Entry(self.main_frame, font=("Helvetica", 18), justify='center', 
+                                    bd=0, highlightthickness=1, highlightbackground="#D1D5DB")
+        self.entry_monto.pack(fill="x", ipady=10, pady=(5, 25))
 
-        # Botón para Borrar Historial (Diferente estilo para advertir peligro)
-        tk.Button(root, text="🗑️ Borrar Todo el Historial", bg="#353b41", fg="white", font=("Arial", 9), 
-                  width=25, command=self.confirmar_borrado).pack(pady=20)
+        # Botones de Acción
+        self.crear_boton("➕ INGRESAR DINERO", COLOR_EXITO, self.ingresar)
+        self.crear_boton("➖ REGISTRAR GASTO", COLOR_PELIGRO, self.gastar)
+        
+        # Separador visual
+        tk.Frame(self.main_frame, height=1, bg="#D1D5DB").pack(fill="x", pady=20)
+
+        self.crear_boton("📜 VER HISTORIAL", COLOR_PRIMARIO, self.mostrar_historial)
+
+    def crear_boton(self, texto, color, comando):
+        btn = tk.Button(self.main_frame, text=texto, font=("Helvetica", 10, "bold"), 
+                        bg=color, fg="white", bd=0, height=2, cursor="hand2", 
+                        activebackground=color, command=comando)
+        btn.pack(fill="x", pady=5)
 
     def actualizar_pantalla(self):
-        self.saldo_var.set(f"Saldo: ${obtener_saldo():.2f}")
+        saldo = obtener_saldo()
+        self.saldo_var.set(f"${saldo:,.2f}")
         self.entry_monto.delete(0, tk.END)
 
     def ingresar(self):
         try:
-            monto = float(self.entry_monto.get())
+            monto = float(self.entry_monto.get().replace(',', '.'))
             if monto <= 0: raise ValueError
             registrar_en_db("Ingreso", monto)
             self.actualizar_pantalla()
         except ValueError:
-            messagebox.showerror("Error", "Introduce un número válido.")
+            messagebox.showerror("Error", "Monto inválido. Ingrese solo números.")
 
     def gastar(self):
         try:
-            monto = float(self.entry_monto.get())
-            saldo_actual = obtener_saldo()
-            if monto > saldo_actual:
-                messagebox.showwarning("Saldo Insuficiente", "No tienes fondos suficientes.")
-            elif monto <= 0:
-                raise ValueError
-            else:
-                registrar_en_db("Gasto", monto)
-                self.actualizar_pantalla()
-        except ValueError:
-            messagebox.showerror("Error", "Introduce un número válido.")
-
-    def confirmar_borrado(self):
-        # Ventana de confirmación
-        respuesta = messagebox.askyesno("Confirmar", "¿Estás seguro de que deseas borrar TODO el historial?\nEsta acción no se puede deshacer.")
-        if respuesta:
-            borrar_historial_db()
+            monto = float(self.entry_monto.get().replace(',', '.'))
+            if monto > obtener_saldo():
+                messagebox.showwarning("Saldo", "No tienes fondos suficientes.")
+                return
+            if monto <= 0: raise ValueError
+            registrar_en_db("Gasto", monto)
             self.actualizar_pantalla()
-            messagebox.showinfo("Borrado", "El historial ha sido eliminado y el saldo se ha reiniciado.")
+        except ValueError:
+            messagebox.showerror("Error", "Monto inválido.")
 
     def mostrar_historial(self):
         ventana_h = tk.Toplevel(self.root)
-        ventana_h.title("Historial Detallado")
-        ventana_h.geometry("600x400")
+        ventana_h.title("Historial de Movimientos")
+        ventana_h.geometry("600x450")
+        ventana_h.configure(bg=COLOR_TARJETA)
 
-        columnas = ("ID", "Tipo", "Monto", "Fecha y Hora")
+        # Estilo de la tabla
+        style = ttk.Style()
+        style.theme_use("clam")
+        style.configure("Treeview", font=("Helvetica", 10), rowheight=25, background=COLOR_TARJETA)
+        style.configure("Treeview.Heading", font=("Helvetica", 10, "bold"), background="#F9FAFB")
+
+        # Crear Tabla
+        columnas = ("ID", "Tipo", "Monto", "Fecha")
         tabla = ttk.Treeview(ventana_h, columns=columnas, show="headings")
         
-        tabla.heading("ID", text="ID")
-        tabla.column("ID", width=50, anchor="center")
-        tabla.heading("Tipo", text="Tipo")
-        tabla.column("Tipo", width=100, anchor="center")
-        tabla.heading("Monto", text="Monto")
-        tabla.column("Monto", width=100, anchor="center")
-        tabla.heading("Fecha y Hora", text="Fecha y Hora Exacta")
-        tabla.column("Fecha y Hora", width=200, anchor="center")
+        for col in columnas:
+            tabla.heading(col, text=col)
+            tabla.column(col, anchor="center")
+        
+        tabla.column("ID", width=50) # Columna ID pequeña
 
-        conexion = sqlite3.connect("presupuesto.db")
-        cursor = conexion.cursor()
-        cursor.execute("SELECT * FROM movimientos ORDER BY id DESC")
-        for fila in cursor.fetchall():
-            tabla.insert("", tk.END, values=fila)
-        conexion.close()
+        def cargar_datos():
+            for item in tabla.get_children(): tabla.delete(item)
+            with sqlite3.connect("presupuesto.db") as con:
+                cursor = con.cursor()
+                cursor.execute("SELECT * FROM movimientos ORDER BY id DESC")
+                for fila in cursor.fetchall():
+                    # Formatear el monto en la tabla para que se vea profesional
+                    fila_lista = list(fila)
+                    fila_lista[2] = f"${fila_lista[2]:,.2f}"
+                    tabla.insert("", tk.END, values=fila_lista)
 
-        tabla.pack(expand=True, fill="both", padx=10, pady=10)
+        def eliminar_seleccionado():
+            item = tabla.selection()
+            if not item:
+                messagebox.showwarning("Aviso", "Selecciona una fila para eliminar.")
+                return
+            
+            valores = tabla.item(item)['values']
+            id_reg = valores[0]
+            
+            if messagebox.askyesno("Confirmar", f"¿Eliminar el registro #{id_reg}?"):
+                eliminar_registro_db(id_reg)
+                cargar_datos()
+                self.actualizar_pantalla()
 
-# --- EJECUCIÓN ---
+        # Botón Eliminar dentro de historial
+        btn_del = tk.Button(ventana_h, text="🗑️ ELIMINAR SELECCIONADO", bg=COLOR_PELIGRO, fg="white",
+                            font=("Helvetica", 9, "bold"), bd=0, padx=10, pady=10, command=eliminar_seleccionado)
+        
+        cargar_datos()
+        tabla.pack(expand=True, fill="both", padx=20, pady=(20, 10))
+        btn_del.pack(fill="x", padx=20, pady=20)
+
 if __name__ == "__main__":
     iniciar_db()
     root = tk.Tk()
-    app = AppPresupuesto(root)
-import tkinter as tk
-from tkinter import messagebox, ttk
-import sqlite3
-from datetime import datetime
-
-# --- CONFIGURACIÓN DE LA BASE DE DATOS ---
-def iniciar_db():
-    conexion = sqlite3.connect("presupuesto.db")
-    cursor = conexion.cursor()
-    cursor.execute('''CREATE TABLE IF NOT EXISTS movimientos (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        tipo TEXT,
-                        monto REAL,
-                        fecha TEXT)''')
-    conexion.commit()
-    conexion.close()
-
-def registrar_en_db(tipo, monto):
-    conexion = sqlite3.connect("presupuesto.db")
-    cursor = conexion.cursor()
-    ahora = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
-    cursor.execute("INSERT INTO movimientos (tipo, monto, fecha) VALUES (?, ?, ?)", (tipo, monto, ahora))
-    conexion.commit()
-    conexion.close()
-
-def obtener_saldo():
-    conexion = sqlite3.connect("presupuesto.db")
-    cursor = conexion.cursor()
-    cursor.execute("SELECT tipo, monto FROM movimientos")
-    movimientos = cursor.fetchall()
-    conexion.close()
     
-    saldo = 0.0
-    for tipo, monto in movimientos:
-        if tipo == "Ingreso":
-            saldo += monto
-        else:
-            saldo -= monto
-    return saldo
-
-def borrar_historial_db():
-    conexion = sqlite3.connect("presupuesto.db")
-    cursor = conexion.cursor()
-    cursor.execute("DELETE FROM movimientos") # Borra todos los datos
-    conexion.commit()
-    conexion.close()
-
-# --- INTERFAZ GRÁFICA ---
-class AppPresupuesto:
-    def __init__(self, root):
-        self.root = root
-        self.root.title("Gestor de Presupuesto Pro")
-        self.root.geometry("400x600") # Un poco más alto para el nuevo botón
-
-        self.saldo_var = tk.StringVar(value=f"Saldo: ${obtener_saldo():.2f}")
-
-        # UI - Diseño Principal
-        tk.Label(root, text="MI BILLETERA", font=("Arial", 14, "bold"), fg="gray").pack(pady=10)
-        self.label_saldo = tk.Label(root, textvariable=self.saldo_var, font=("Arial", 22, "bold"), pady=10)
-        self.label_saldo.pack()
-
-        tk.Label(root, text="Monto a operar:", font=("Arial", 10)).pack(pady=5)
-        self.entry_monto = tk.Entry(root, font=("Arial", 14), justify='center')
-        self.entry_monto.pack(pady=5)
-
-        # Botones Principales
-        tk.Button(root, text="➕ Ingresar Dinero", bg="#28a745", fg="white", font=("Arial", 10, "bold"), 
-                  width=25, height=2, command=self.ingresar).pack(pady=10)
+    # Intento de mejorar la nitidez en pantallas modernas
+    try:
+        from ctypes import windll
+        windll.shcore.SetProcessDpiAwareness(1)
+    except:
+        pass
         
-        tk.Button(root, text="➖ Registrar Gasto", bg="#dc3545", fg="white", font=("Arial", 10, "bold"), 
-                  width=25, height=2, command=self.gastar).pack(pady=10)
-        
-        tk.Button(root, text="📜 Ver Historial", bg="#007bff", fg="white", font=("Arial", 10, "bold"), 
-                  width=25, height=2, command=self.mostrar_historial).pack(pady=10)
-
-        # Botón para Borrar Historial (Diferente estilo para advertir peligro)
-        tk.Button(root, text="🗑️ Borrar Todo el Historial", bg="#353b41", fg="white", font=("Arial", 9), 
-                  width=25, command=self.confirmar_borrado).pack(pady=20)
-
-    def actualizar_pantalla(self):
-        self.saldo_var.set(f"Saldo: ${obtener_saldo():.2f}")
-        self.entry_monto.delete(0, tk.END)
-
-    def ingresar(self):
-        try:
-            monto = float(self.entry_monto.get())
-            if monto <= 0: raise ValueError
-            registrar_en_db("Ingreso", monto)
-            self.actualizar_pantalla()
-        except ValueError:
-            messagebox.showerror("Error", "Introduce un número válido.")
-
-    def gastar(self):
-        try:
-            monto = float(self.entry_monto.get())
-            saldo_actual = obtener_saldo()
-            if monto > saldo_actual:
-                messagebox.showwarning("Saldo Insuficiente", "No tienes fondos suficientes.")
-            elif monto <= 0:
-                raise ValueError
-            else:
-                registrar_en_db("Gasto", monto)
-                self.actualizar_pantalla()
-        except ValueError:
-            messagebox.showerror("Error", "Introduce un número válido.")
-
-    def confirmar_borrado(self):
-        # Ventana de confirmación
-        respuesta = messagebox.askyesno("Confirmar", "¿Estás seguro de que deseas borrar TODO el historial?\nEsta acción no se puede deshacer.")
-        if respuesta:
-            borrar_historial_db()
-            self.actualizar_pantalla()
-            messagebox.showinfo("Borrado", "El historial ha sido eliminado y el saldo se ha reiniciado.")
-
-    def mostrar_historial(self):
-        ventana_h = tk.Toplevel(self.root)
-        ventana_h.title("Historial Detallado")
-        ventana_h.geometry("600x400")
-
-        columnas = ("ID", "Tipo", "Monto", "Fecha y Hora")
-        tabla = ttk.Treeview(ventana_h, columns=columnas, show="headings")
-        
-        tabla.heading("ID", text="ID")
-        tabla.column("ID", width=50, anchor="center")
-        tabla.heading("Tipo", text="Tipo")
-        tabla.column("Tipo", width=100, anchor="center")
-        tabla.heading("Monto", text="Monto")
-        tabla.column("Monto", width=100, anchor="center")
-        tabla.heading("Fecha y Hora", text="Fecha y Hora Exacta")
-        tabla.column("Fecha y Hora", width=200, anchor="center")
-
-        conexion = sqlite3.connect("presupuesto.db")
-        cursor = conexion.cursor()
-        cursor.execute("SELECT * FROM movimientos ORDER BY id DESC")
-        for fila in cursor.fetchall():
-            tabla.insert("", tk.END, values=fila)
-        conexion.close()
-
-        tabla.pack(expand=True, fill="both", padx=10, pady=10)
-
-# --- EJECUCIÓN ---
-if __name__ == "__main__":
-    iniciar_db()
-    root = tk.Tk()
     app = AppPresupuesto(root)
     root.mainloop()
